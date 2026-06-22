@@ -72,21 +72,24 @@
       display: none; margin-bottom: 1rem; line-height: 1.6;
     }
     .result-wrap { display: none; }
-    .result-card { border: 1px solid #eee; border-radius: 12px; overflow: hidden; margin-bottom: 1rem; }
-    .result-head {
-      padding: 12px 16px;
-      background: #f8f8f8;
-      border-bottom: 1px solid #eee;
-    }
-    .result-head .uid { font-size: 11px; color: #aaa; font-family: monospace; }
-    .result-body { padding: 24px 20px; text-align: center; }
-    .count-num { font-size: 64px; font-weight: 700; color: #111; line-height: 1; margin-bottom: 6px; }
-    .count-unit { font-size: 16px; font-weight: 400; color: #888; }
-    .count-desc { font-size: 13px; color: #aaa; margin-top: 8px; }
-    .count-period { font-size: 12px; color: #bbb; margin-top: 4px; }
-    .prog-wrap { height: 3px; background: #f0f0f0; border-radius: 2px; overflow: hidden; margin-top: 20px; }
+    .result-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 1rem; }
+    .result-card { border: 1px solid #eee; border-radius: 12px; overflow: hidden; }
+    .result-card.current { border-color: #bfdbfe; }
+    .result-head { padding: 10px 14px; background: #f8f8f8; border-bottom: 1px solid #eee; }
+    .result-card.current .result-head { background: #f0f5ff; border-bottom-color: #bfdbfe; }
+    .result-head .period-tag { font-size: 11px; font-weight: 600; color: #888; margin-bottom: 2px; }
+    .result-card.current .result-head .period-tag { color: #2563eb; }
+    .result-head .period-range { font-size: 11px; color: #bbb; font-family: monospace; }
+    .result-body { padding: 16px 14px; text-align: center; }
+    .count-num { font-size: 48px; font-weight: 700; color: #ccc; line-height: 1; margin-bottom: 4px; }
+    .count-num.done { color: #111; }
+    .result-card.current .count-num.done { color: #2563eb; }
+    .count-unit { font-size: 13px; color: #aaa; }
+    .count-desc { font-size: 11px; color: #ccc; margin-top: 4px; }
+    .prog-wrap { height: 3px; background: #f0f0f0; border-radius: 2px; overflow: hidden; margin-top: 12px; }
     .prog-bar { height: 100%; background: #2563eb; border-radius: 2px; width: 0%; transition: width 0.5s; }
-    .status-txt { font-size: 12px; color: #bbb; margin-top: 6px; text-align: center; min-height: 16px; }
+    .prog-bar.prev { background: #94a3b8; }
+    .status-txt { font-size: 11px; color: #bbb; margin-top: 5px; text-align: center; min-height: 14px; }
     .guide { background: #f8f8f8; border-radius: 10px; padding: 14px 16px; font-size: 12px; color: #888; line-height: 1.8; }
     .guide strong { color: #555; font-weight: 600; }
   </style>
@@ -95,7 +98,7 @@
 <div class="container">
   <div class="logo">✦ 사람인 멘토링매치</div>
   <h1>댓글 활동 조회</h1>
-  <p class="subtitle">프로필 URL 또는 ID를 입력하면<br>이번 기간 내 작성한 150자 이상 댓글 수를 확인할 수 있습니다.</p>
+  <p class="subtitle">프로필 URL 또는 ID를 입력하면<br>현재 및 직전 기간의 150자 이상 댓글 수를 확인할 수 있습니다.</p>
 
   <div class="period-card">
     <div>
@@ -115,17 +118,32 @@
   <div class="err-box" id="err-box"></div>
 
   <div class="result-wrap" id="result-wrap">
-    <div class="result-card">
-      <div class="result-head">
-        <div class="uid" id="result-uid"></div>
+    <div class="result-grid">
+      <div class="result-card current">
+        <div class="result-head">
+          <div class="period-tag">현재 기간</div>
+          <div class="period-range" id="cur-range">—</div>
+        </div>
+        <div class="result-body">
+          <div class="count-num" id="cur-count">—</div>
+          <div class="count-unit">개</div>
+          <div class="count-desc">150자 이상</div>
+          <div class="prog-wrap"><div class="prog-bar" id="cur-prog"></div></div>
+          <div class="status-txt" id="cur-status"></div>
+        </div>
       </div>
-      <div class="result-body">
-        <div class="count-num" id="count-num">—</div>
-        <div class="count-unit">개</div>
-        <div class="count-desc">150자 이상 댓글</div>
-        <div class="count-period" id="count-period"></div>
-        <div class="prog-wrap"><div class="prog-bar" id="prog-bar"></div></div>
-        <div class="status-txt" id="status-txt"></div>
+      <div class="result-card">
+        <div class="result-head">
+          <div class="period-tag">직전 기간</div>
+          <div class="period-range" id="prev-range">—</div>
+        </div>
+        <div class="result-body">
+          <div class="count-num" id="prev-count">—</div>
+          <div class="count-unit">개</div>
+          <div class="count-desc">150자 이상</div>
+          <div class="prog-wrap"><div class="prog-bar prev" id="prev-prog"></div></div>
+          <div class="status-txt" id="prev-status"></div>
+        </div>
       </div>
     </div>
     <div class="guide">
@@ -138,21 +156,28 @@
 </div>
 
 <script>
-function getPeriod() {
+function getPeriods() {
   const now = new Date();
   const y = now.getFullYear(), mo = now.getMonth(), d = now.getDate();
-  let start, end;
+  let curStart, curEnd, prevStart, prevEnd;
   if (d >= 15) {
-    start = new Date(y, mo, 15, 0, 0, 0);
-    end   = new Date(y, mo + 1, 14, 23, 59, 59);
+    curStart  = new Date(y, mo, 15, 0, 0, 0);
+    curEnd    = new Date(y, mo + 1, 14, 23, 59, 59);
+    prevStart = new Date(y, mo - 1, 15, 0, 0, 0);
+    prevEnd   = new Date(y, mo, 14, 23, 59, 59);
   } else {
-    start = new Date(y, mo - 1, 15, 0, 0, 0);
-    end   = new Date(y, mo, 14, 23, 59, 59);
+    curStart  = new Date(y, mo - 1, 15, 0, 0, 0);
+    curEnd    = new Date(y, mo, 14, 23, 59, 59);
+    prevStart = new Date(y, mo - 2, 15, 0, 0, 0);
+    prevEnd   = new Date(y, mo - 1, 14, 23, 59, 59);
   }
-  return { start, end };
+  return { curStart, curEnd, prevStart, prevEnd };
 }
 
 function fmt(d) {
+  return (d.getMonth()+1) + '/' + d.getDate();
+}
+function fmtFull(d) {
   return d.getFullYear() + '.' + String(d.getMonth()+1).padStart(2,'0') + '.' + String(d.getDate()).padStart(2,'0');
 }
 
@@ -166,23 +191,16 @@ function parseId(input) {
 
 function initDisplay() {
   const now = new Date();
-  const { start, end } = getPeriod();
-  document.getElementById('period-text').textContent = fmt(start) + ' ~ ' + fmt(end);
-  const days = Math.ceil((end - now) / 86400000);
+  const { curStart, curEnd } = getPeriods();
+  document.getElementById('period-text').textContent = fmtFull(curStart) + ' ~ ' + fmtFull(curEnd);
+  const days = Math.ceil((curEnd - now) / 86400000);
   document.getElementById('remain-text').textContent = days > 0 ? '마감 ' + days + '일 전' : '기간 마감';
-}
-
-function setProgress(pct, msg) {
-  document.getElementById('prog-bar').style.width = pct + '%';
-  document.getElementById('status-txt').textContent = msg;
 }
 
 async function runSearch() {
   const input = document.getElementById('url-input').value;
   const id = parseId(input);
-
   document.getElementById('err-box').style.display = 'none';
-
   if (!id) {
     document.getElementById('err-box').textContent = '올바른 프로필 URL 또는 숫자 ID를 입력해주세요.';
     document.getElementById('err-box').style.display = 'block';
@@ -192,20 +210,27 @@ async function runSearch() {
   const btn = document.getElementById('run-btn');
   btn.disabled = true;
   btn.textContent = '조회 중...';
-
   document.getElementById('result-wrap').style.display = 'block';
-  document.getElementById('count-num').textContent = '...';
-  document.getElementById('result-uid').textContent = '#' + id;
-  setProgress(10, '데이터 불러오는 중...');
 
-  const { start, end } = getPeriod();
+  const { curStart, curEnd, prevStart, prevEnd } = getPeriods();
+  document.getElementById('cur-range').textContent = fmt(curStart) + ' ~ ' + fmt(curEnd);
+  document.getElementById('prev-range').textContent = fmt(prevStart) + ' ~ ' + fmt(prevEnd);
+  document.getElementById('cur-count').textContent = '...';
+  document.getElementById('cur-count').className = 'count-num';
+  document.getElementById('prev-count').textContent = '...';
+  document.getElementById('prev-count').className = 'count-num';
+  document.getElementById('cur-prog').style.width = '0%';
+  document.getElementById('prev-prog').style.width = '0%';
+  document.getElementById('cur-status').textContent = '불러오는 중...';
+  document.getElementById('prev-status').textContent = '불러오는 중...';
 
   try {
-    setProgress(30, 'API 호출 중...');
+    document.getElementById('cur-prog').style.width = '40%';
     const res = await fetch('/api/comments?userId=' + id);
     if (!res.ok) throw new Error('HTTP ' + res.status);
 
-    setProgress(70, '댓글 분석 중...');
+    document.getElementById('cur-prog').style.width = '80%';
+    document.getElementById('prev-prog').style.width = '80%';
     const data = await res.json();
 
     if (data.code !== 200 || !data.body || !data.body.content) {
@@ -213,24 +238,30 @@ async function runSearch() {
     }
 
     const content = data.body.content;
-    const inPeriod = content.filter(function(item) {
+
+    const curPassing = content.filter(function(item) {
       const d = new Date(item.regDtm);
-      return d >= start && d <= end;
+      return d >= curStart && d <= curEnd && item.contCnnt && item.contCnnt.length >= 150;
     });
-    const passing = inPeriod.filter(function(item) {
-      return item.contCnnt && item.contCnnt.length >= 150;
+    const prevPassing = content.filter(function(item) {
+      const d = new Date(item.regDtm);
+      return d >= prevStart && d <= prevEnd && item.contCnnt && item.contCnnt.length >= 150;
     });
 
-    setProgress(100, '완료');
-    document.getElementById('count-num').textContent = passing.length;
-    document.getElementById('count-period').textContent = fmt(start) + ' ~ ' + fmt(end) + ' 기준';
-    document.getElementById('status-txt').textContent = '';
+    document.getElementById('cur-prog').style.width = '100%';
+    document.getElementById('prev-prog').style.width = '100%';
+    document.getElementById('cur-count').textContent = curPassing.length;
+    document.getElementById('cur-count').className = 'count-num done';
+    document.getElementById('cur-status').textContent = '완료';
+    document.getElementById('prev-count').textContent = prevPassing.length;
+    document.getElementById('prev-count').className = 'count-num done';
+    document.getElementById('prev-status').textContent = '완료';
 
   } catch (e) {
-    document.getElementById('count-num').textContent = '오류';
     document.getElementById('err-box').textContent = '조회 중 오류가 발생했습니다. 프로필이 공개 상태인지 확인하거나 잠시 후 다시 시도해주세요.';
     document.getElementById('err-box').style.display = 'block';
-    setProgress(0, '');
+    document.getElementById('cur-status').textContent = '오류';
+    document.getElementById('prev-status').textContent = '오류';
   }
 
   btn.disabled = false;
