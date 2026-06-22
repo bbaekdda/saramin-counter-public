@@ -104,3 +104,144 @@
     </div>
     <div class="remain-txt" id="remain-text"></div>
   </div>
+
+  <div class="input-label">내 프로필 URL 또는 ID 입력</div>
+  <div class="input-wrap">
+    <input type="text" id="url-input" placeholder="https://career.saramin.co.kr/profile/view/..." />
+    <button class="run-btn" id="run-btn" onclick="runSearch()">조회</button>
+  </div>
+  <div class="input-hint">숫자 ID만 입력해도 됩니다 예: <code>20386702</code></div>
+
+  <div class="err-box" id="err-box"></div>
+
+  <div class="result-wrap" id="result-wrap">
+    <div class="result-card">
+      <div class="result-head">
+        <div class="uid" id="result-uid"></div>
+      </div>
+      <div class="result-body">
+        <div class="count-num" id="count-num">—</div>
+        <div class="count-unit">개</div>
+        <div class="count-desc">150자 이상 댓글</div>
+        <div class="count-period" id="count-period"></div>
+        <div class="prog-wrap"><div class="prog-bar" id="prog-bar"></div></div>
+        <div class="status-txt" id="status-txt"></div>
+      </div>
+    </div>
+    <div class="guide">
+      <strong>집계 기준 안내</strong><br>
+      · 매월 15일 ~ 익월 14일 기준으로 집계됩니다<br>
+      · 공백 포함 150자 이상 댓글만 카운트됩니다<br>
+      · 조회 시점 기준 최신 데이터가 반영됩니다
+    </div>
+  </div>
+</div>
+
+<script>
+function getPeriod() {
+  const now = new Date();
+  const y = now.getFullYear(), mo = now.getMonth(), d = now.getDate();
+  let start, end;
+  if (d >= 15) {
+    start = new Date(y, mo, 15, 0, 0, 0);
+    end   = new Date(y, mo + 1, 14, 23, 59, 59);
+  } else {
+    start = new Date(y, mo - 1, 15, 0, 0, 0);
+    end   = new Date(y, mo, 14, 23, 59, 59);
+  }
+  return { start, end };
+}
+
+function fmt(d) {
+  return d.getFullYear() + '.' + String(d.getMonth()+1).padStart(2,'0') + '.' + String(d.getDate()).padStart(2,'0');
+}
+
+function parseId(input) {
+  input = input.trim();
+  const m = input.match(/profile\/view\/(\d+)/);
+  if (m) return m[1];
+  if (/^\d+$/.test(input)) return input;
+  return null;
+}
+
+function initDisplay() {
+  const now = new Date();
+  const { start, end } = getPeriod();
+  document.getElementById('period-text').textContent = fmt(start) + ' ~ ' + fmt(end);
+  const days = Math.ceil((end - now) / 86400000);
+  document.getElementById('remain-text').textContent = days > 0 ? '마감 ' + days + '일 전' : '기간 마감';
+}
+
+function setProgress(pct, msg) {
+  document.getElementById('prog-bar').style.width = pct + '%';
+  document.getElementById('status-txt').textContent = msg;
+}
+
+async function runSearch() {
+  const input = document.getElementById('url-input').value;
+  const id = parseId(input);
+
+  document.getElementById('err-box').style.display = 'none';
+
+  if (!id) {
+    document.getElementById('err-box').textContent = '올바른 프로필 URL 또는 숫자 ID를 입력해주세요.';
+    document.getElementById('err-box').style.display = 'block';
+    return;
+  }
+
+  const btn = document.getElementById('run-btn');
+  btn.disabled = true;
+  btn.textContent = '조회 중...';
+
+  document.getElementById('result-wrap').style.display = 'block';
+  document.getElementById('count-num').textContent = '...';
+  document.getElementById('result-uid').textContent = '#' + id;
+  setProgress(10, '데이터 불러오는 중...');
+
+  const { start, end } = getPeriod();
+
+  try {
+    setProgress(30, 'API 호출 중...');
+    const res = await fetch('/api/comments?userId=' + id);
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+
+    setProgress(70, '댓글 분석 중...');
+    const data = await res.json();
+
+    if (data.code !== 200 || !data.body || !data.body.content) {
+      throw new Error(data.error || '데이터를 불러올 수 없습니다.');
+    }
+
+    const content = data.body.content;
+    const inPeriod = content.filter(function(item) {
+      const d = new Date(item.regDtm);
+      return d >= start && d <= end;
+    });
+    const passing = inPeriod.filter(function(item) {
+      return item.contCnnt && item.contCnnt.length >= 150;
+    });
+
+    setProgress(100, '완료');
+    document.getElementById('count-num').textContent = passing.length;
+    document.getElementById('count-period').textContent = fmt(start) + ' ~ ' + fmt(end) + ' 기준';
+    document.getElementById('status-txt').textContent = '';
+
+  } catch (e) {
+    document.getElementById('count-num').textContent = '오류';
+    document.getElementById('err-box').textContent = '조회 중 오류가 발생했습니다. 프로필이 공개 상태인지 확인하거나 잠시 후 다시 시도해주세요.';
+    document.getElementById('err-box').style.display = 'block';
+    setProgress(0, '');
+  }
+
+  btn.disabled = false;
+  btn.textContent = '조회';
+}
+
+document.getElementById('url-input').addEventListener('keydown', function(e) {
+  if (e.key === 'Enter') runSearch();
+});
+
+initDisplay();
+</script>
+</body>
+</html>
